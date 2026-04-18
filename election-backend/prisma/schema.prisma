@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id         Int      @id @default(autoincrement())
+  studentId  String   @unique
+  email      String   @unique
+  hasVoted   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  votes      Vote[]
+
+  @@index([email])
+}
+
+model Candidate {
+  id          Int      @id @default(autoincrement())
+  name        String
+  position    String
+  description String
+  votes       Vote[]
+}
+
+model Vote {
+  id          Int       @id @default(autoincrement())
+  studentId   Int       @unique
+  candidateId Int
+  timestamp   DateTime  @default(now())
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+
+  @@index([candidateId])
+}
