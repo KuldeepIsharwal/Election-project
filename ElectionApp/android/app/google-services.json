@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "626587458923",
+    "project_id": "campus-election-ecaa9",
+    "storage_bucket": "campus-election-ecaa9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626587458923:android:89ca8047eae595c326802e",
+        "android_client_info": {
+          "package_name": "com.electionapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCbJoZoGLH6xE_Huetbci-VSv8x8cgRvw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
