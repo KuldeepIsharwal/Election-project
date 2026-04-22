@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,51 +11,34 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { getCurrentLocation, isWithinCampusBoundary } from '../services/location';
-import { fetchCandidates as getCandidates, submitVote } from '../services/api';
+import { fetchCurrentElection, castVote } from '../services/api';
 
 const VotingScreen = () => {
+  const navigation = useNavigation();
   const { user, backendStudent, setBackendStudent, clearBackendSession } = useAuth();
-  const [candidates, setCandidates] = useState([]);
-  const [loadingCandidates, setLoadingCandidates] = useState(true);
+  const [election, setElection] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [votedPositions, setVotedPositions] = useState({});
   const [loadingCandidateId, setLoadingCandidateId] = useState(null);
-  const [selectedCandidateId, setSelectedCandidateId] = useState(null);
-  const [votingLocked, setVotingLocked] = useState(Boolean(backendStudent?.hasVoted));
 
   useEffect(() => {
-    setVotingLocked(Boolean(backendStudent?.hasVoted));
-  }, [backendStudent?.hasVoted]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadCandidates = async () => {
-      try {
-        setLoadingCandidates(true);
-        const data = await getCandidates();
-
-        if (isMounted) {
-          setCandidates(Array.isArray(data) ? data : []);
-        }
-      } catch (error) {
-        console.error('Candidate fetch failed', error);
-        if (isMounted) {
-          Alert.alert('Loading Failed', 'Could not fetch candidates from the server.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingCandidates(false);
-        }
-      }
-    };
-
-    loadCandidates();
-
-    return () => {
-      isMounted = false;
-    };
+    loadElection();
   }, []);
+
+  const loadElection = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchCurrentElection();
+      setElection(data);
+    } catch (error) {
+      setElection(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     clearBackendSession();
@@ -62,211 +46,226 @@ const VotingScreen = () => {
     await GoogleSignin.signOut().catch(() => {});
   };
 
-  const handleVote = async candidate => {
-    if (votingLocked) {
-      Alert.alert('Vote Locked', 'Your account has already submitted a vote.');
-      return;
-    }
-
-    if (!backendStudent?.studentId) {
-      Alert.alert('Missing Student Data', 'Please sign in again before voting.');
-      return;
-    }
-
-    setLoadingCandidateId(candidate.id);
-
-    try {
-      const location = await getCurrentLocation();
-      const isOnCampus = isWithinCampusBoundary(location);
-
-      if (!isOnCampus) {
-        Alert.alert('Voting Blocked', 'You must be inside campus boundaries to vote.');
-        return;
-      }
-
-      await submitVote(backendStudent.studentId, candidate.id);
-
-      setSelectedCandidateId(candidate.id);
-      setVotingLocked(true);
-      setBackendStudent({
-        ...backendStudent,
-        hasVoted: true,
-      });
-      Alert.alert(
-        'Vote Recorded',
-        `Your vote for ${candidate.name} has been submitted successfully.`,
-      );
-    } catch (error) {
-      console.error('Vote flow failed', error);
-
-      if (error.status === 400 && error.payload?.message === 'Already voted') {
-        setVotingLocked(true);
-        setBackendStudent({
-          ...backendStudent,
-          hasVoted: true,
-        });
-        Alert.alert('Already Voted', 'This account has already cast a vote.');
-        return;
-      }
-
-      Alert.alert('Voting Failed', error.message || 'Could not complete your vote.');
-    } finally {
-      setLoadingCandidateId(null);
-    }
+  const handleApply = () => {
+    navigation.navigate('Apply');
   };
+
+  const handleVote = async (candidate, position) => {
+    if (election?.status !== 'ACTIVE') {
+      Alert.alert('Not Open', 'Voting is not open yet.');
+      return;
+    }
+    if (votedPositions[position.id]) {
+      Alert.alert('Already Voted', 'You have already voted for this position.');
+      return;
+    }
+    Alert.alert(
+      'Confirm Vote',
+      `Vote for ${candidate.name} as ${position.positionName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Vote',
+          onPress: async () => {
+            setLoadingCandidateId(candidate.id);
+            try {
+              const location = await getCurrentLocation();
+              if (!isWithinCampusBoundary(location)) {
+                Alert.alert('Voting Blocked', 'You must be inside campus to vote.');
+                return;
+              }
+              await castVote(election.id, position.id, candidate.id, location.latitude, location.longitude);
+              setVotedPositions(prev => ({ ...prev, [position.id]: candidate.id }));
+              Alert.alert('Vote Recorded', `Your vote for ${candidate.name} has been submitted.`);
+            } catch (error) {
+              if (error.status === 400) {
+                setVotedPositions(prev => ({ ...prev, [position.id]: true }));
+                Alert.alert('Already Voted', 'You already voted for this position.');
+                return;
+              }
+              Alert.alert('Failed', error.message || 'Could not submit vote.');
+            } finally {
+              setLoadingCandidateId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const now = new Date();
+  const isActive = election?.status === 'ACTIVE' &&
+    new Date(election.startDate) <= now &&
+    new Date(election.endDate) >= now;
+  const isDraft = election?.status === 'DRAFT';
+  const isEnded = election?.status === 'ENDED' ||
+    (election?.status === 'ACTIVE' && new Date(election.endDate) < now);
+
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.welcome}>Welcome</Text>
+        <Text style={styles.userName}>{user?.displayName || 'Student'}</Text>
+        <Text style={styles.userEmail}>{user?.email || ''}</Text>
+      </View>
+      <TouchableOpacity onPress={handleLogout}>
+        <Text style={styles.logoutText}>Logout</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        {renderHeader()}
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
+  if (!election) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        {renderHeader()}
+        <View style={styles.messageBox}>
+          <Text style={styles.messageTitle}>No Election Active</Text>
+          <Text style={styles.messageText}>There is no upcoming election at this time.</Text>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (isEnded) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        {renderHeader()}
+        <View style={styles.messageBox}>
+          <Text style={styles.messageTitle}>Election Ended</Text>
+          <Text style={styles.messageText}>The election has ended. Thank you for participating!</Text>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcome}>Welcome</Text>
-          <Text style={styles.userName}>{user?.displayName || 'Voter'}</Text>
-          <Text style={styles.userEmail}>{user?.email || 'Signed-in user'}</Text>
-        </View>
+      {renderHeader()}
 
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+      <View style={styles.electionHeader}>
+        <Text style={styles.electionTitle}>{election.title}</Text>
+        {isDraft && (
+          <View style={styles.draftBanner}>
+            <Text style={styles.draftBannerText}>
+              📋 Applications Open — Voting starts on {new Date(election.startDate).toLocaleString()}
+            </Text>
+            <TouchableOpacity style={styles.applyButton} onPress={handleApply}>
+              <Text style={styles.applyButtonText}>Apply as Candidate</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {isActive && (
+          <View style={styles.activeBanner}>
+            <Text style={styles.activeBannerText}>
+              🗳️ Voting is OPEN — Closes {new Date(election.endDate).toLocaleString()}
+            </Text>
+          </View>
+        )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Presidential Election</Text>
-        <Text style={styles.sectionSubtitle}>
-          {votingLocked
-            ? 'Your account has already voted. Results submission is locked.'
-            : 'Select one candidate. Your vote will be validated and sent to the backend.'}
-        </Text>
-      </View>
-
-      {loadingCandidates ? (
-        <ActivityIndicator size="large" color="#2563eb" style={styles.fetchLoader} />
-      ) : candidates.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>No candidates are available yet.</Text>
-        </View>
-      ) : (
-        candidates.map(candidate => {
-        const isLoading = loadingCandidateId === candidate.id;
-        const isSelected = selectedCandidateId === candidate.id;
-
-        return (
-          <TouchableOpacity
-            key={candidate.id}
-            style={[styles.card, isSelected && styles.selectedCard]}
-            onPress={() => handleVote(candidate)}
-            disabled={Boolean(loadingCandidateId) || votingLocked}>
-            <View>
-              <Text style={styles.cardTitle}>{candidate.name}</Text>
-              <Text style={styles.cardSub}>{candidate.position}</Text>
-              <Text style={styles.cardSub}>{candidate.description}</Text>
-            </View>
-
-            {isLoading ? (
-              <ActivityIndicator color="#2563eb" />
-            ) : (
-              <Text style={styles.voteAction}>
-                {isSelected || votingLocked ? 'Submitted' : 'Vote'}
+      {election.positions?.map(position => (
+        <View key={position.id} style={styles.positionSection}>
+          <Text style={styles.positionTitle}>{position.positionName}</Text>
+          {position.candidates?.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>
+                {isDraft ? 'No approved candidates yet.' : 'No candidates for this position.'}
               </Text>
-            )}
-          </TouchableOpacity>
-        );
-        })
-      )}
+            </View>
+          ) : (
+            position.candidates.map(candidate => {
+              const isVotedForThis = votedPositions[position.id] === candidate.id;
+              const isPositionVoted = Boolean(votedPositions[position.id]);
+              const isThisLoading = loadingCandidateId === candidate.id;
+              return (
+                <View key={candidate.id} style={[styles.candidateCard, isVotedForThis && styles.votedCard]}>
+                  {candidate.photoUrl ? (
+                    <Image source={{ uri: candidate.photoUrl }} style={styles.photo} />
+                  ) : (
+                    <View style={styles.photoPlaceholder}>
+                      <Text style={styles.photoPlaceholderText}>
+                        {candidate.name?.charAt(0) || '?'}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.candidateInfo}>
+                    <Text style={styles.candidateName}>{candidate.name}</Text>
+                    <Text style={styles.candidateRoll}>{candidate.rollNo}</Text>
+                  </View>
+                  {isActive && (
+                    <TouchableOpacity
+                      style={[styles.voteButton, (isPositionVoted || isThisLoading) && styles.voteButtonDisabled]}
+                      onPress={() => handleVote(candidate, position)}
+                      disabled={isPositionVoted || Boolean(loadingCandidateId)}>
+                      {isThisLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={styles.voteButtonText}>
+                          {isVotedForThis ? '✓ Voted' : isPositionVoted ? 'Done' : 'Vote'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {isDraft && (
+                    <View style={styles.approvedBadge}>
+                      <Text style={styles.approvedBadgeText}>Approved</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+      ))}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#f8fafc',
-    minHeight: '100%',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-  },
-  welcome: {
-    fontSize: 14,
-    color: '#64748b',
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  userEmail: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  logoutText: {
-    color: '#dc2626',
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 18,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#475569',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  fetchLoader: {
-    marginTop: 32,
-  },
-  emptyState: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-  },
-  emptyStateText: {
-    fontSize: 15,
-    color: '#475569',
-    textAlign: 'center',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    elevation: 2,
-  },
-  selectedCard: {
-    borderWidth: 1,
-    borderColor: '#2563eb',
-    backgroundColor: '#eff6ff',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  cardSub: {
-    fontSize: 14,
-    color: '#475569',
-    marginTop: 6,
-  },
-  voteAction: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#2563eb',
-  },
+  container: { padding: 20, backgroundColor: '#f8fafc', minHeight: '100%' },
+  centered: { flex: 1, backgroundColor: '#f8fafc', padding: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  welcome: { fontSize: 14, color: '#64748b' },
+  userName: { fontSize: 22, fontWeight: '700', color: '#0f172a' },
+  userEmail: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  logoutText: { color: '#dc2626', fontWeight: '600', fontSize: 15 },
+  messageBox: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginTop: 40 },
+  messageTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
+  messageText: { fontSize: 14, color: '#475569', textAlign: 'center' },
+  electionHeader: { marginBottom: 20 },
+  electionTitle: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
+  draftBanner: { backgroundColor: '#fef9c3', borderRadius: 12, padding: 14 },
+  draftBannerText: { fontSize: 13, color: '#854d0e', marginBottom: 12 },
+  applyButton: { backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  applyButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  activeBanner: { backgroundColor: '#dcfce7', borderRadius: 12, padding: 14 },
+  activeBannerText: { fontSize: 13, color: '#166534' },
+  positionSection: { marginBottom: 24 },
+  positionTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+  emptyText: { color: '#94a3b8', fontSize: 14 },
+  candidateCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0f172a', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  votedCard: { borderWidth: 1.5, borderColor: '#2563eb', backgroundColor: '#eff6ff' },
+  photo: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
+  photoPlaceholder: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#e2e8f0', marginRight: 12, alignItems: 'center', justifyContent: 'center' },
+  photoPlaceholderText: { fontSize: 22, fontWeight: '700', color: '#64748b' },
+  candidateInfo: { flex: 1 },
+  candidateName: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  candidateRoll: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  voteButton: { backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
+  voteButtonDisabled: { backgroundColor: '#94a3b8' },
+  voteButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  approvedBadge: { backgroundColor: '#dcfce7', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8 },
+  approvedBadgeText: { color: '#166534', fontSize: 12, fontWeight: '600' },
 });
 
 export default VotingScreen;

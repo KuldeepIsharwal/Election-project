@@ -2,10 +2,10 @@ import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid, Platform } from 'react-native';
 
 const CAMPUS_BOUNDARIES = {
-  minLat: 23.82,
-  maxLat: 23.85,
-  minLng: 91.26,
-  maxLng: 91.29,
+  minLat: 24.84232,
+  maxLat: 24.84392,
+  minLng: 93.93783,
+  maxLng: 93.93985,
 };
 
 export const isWithinCampusBoundary = ({ latitude, longitude }) => {

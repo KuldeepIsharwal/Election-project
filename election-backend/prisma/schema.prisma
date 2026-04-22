@@ -8,31 +8,85 @@ datasource db {
 }
 
 model Student {
-  id         Int      @id @default(autoincrement())
-  studentId  String   @unique
-  email      String   @unique
-  hasVoted   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  votes      Vote[]
+  id           Int                    @id @default(autoincrement())
+  studentId    String                 @unique
+  email        String                 @unique
+  createdAt    DateTime               @default(now())
+  votes        Vote[]
+  applications CandidateApplication[]
 
   @@index([email])
 }
 
-model Candidate {
-  id          Int      @id @default(autoincrement())
-  name        String
-  position    String
-  description String
-  votes       Vote[]
+model Election {
+  id           Int            @id @default(autoincrement())
+  title        String
+  startDate    DateTime
+  endDate      DateTime
+  status       ElectionStatus @default(DRAFT)
+  createdAt    DateTime       @default(now())
+  positions    Position[]
+  votes        Vote[]
+  applications CandidateApplication[]
+}
+
+enum ElectionStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+}
+
+model Position {
+  id           Int                    @id @default(autoincrement())
+  positionName String
+  electionId   Int
+  election     Election               @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  candidates   CandidateApplication[]
+  votes        Vote[]
+
+  @@index([electionId])
+}
+
+model CandidateApplication {
+  id         Int               @id @default(autoincrement())
+  studentId  Int
+  electionId Int
+  positionId Int
+  name       String
+  rollNo     String
+  photoUrl   String
+  status     ApplicationStatus @default(PENDING)
+  createdAt  DateTime          @default(now())
+  student    Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  election   Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  position   Position          @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  votes      Vote[]
+
+  @@unique([studentId, positionId])
+  @@index([electionId])
+  @@index([positionId])
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Vote {
-  id          Int       @id @default(autoincrement())
-  studentId   Int       @unique
+  id          Int                  @id @default(autoincrement())
+  studentId   Int
+  electionId  Int
+  positionId  Int
   candidateId Int
-  timestamp   DateTime  @default(now())
-  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  timestamp   DateTime             @default(now())
+  student     Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  election    Election             @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  position    Position             @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  candidate   CandidateApplication @relation(fields: [candidateId], references: [id], onDelete: Restrict)
 
+  @@unique([studentId, positionId])
+  @@index([electionId])
+  @@index([positionId])
   @@index([candidateId])
 }

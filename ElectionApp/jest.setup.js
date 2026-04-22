@@ -3,6 +3,11 @@ jest.mock('@react-navigation/native', () => {
 
   return {
     NavigationContainer: ({ children }) => children,
+    useNavigation: () => ({
+      navigate: jest.fn(),
+      replace: jest.fn(),
+      goBack: jest.fn(),
+    }),
   };
 });
 
@@ -50,4 +55,8 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
 
 jest.mock('react-native-geolocation-service', () => ({
   getCurrentPosition: jest.fn(),
+}));
+
+jest.mock('react-native-image-picker', () => ({
+  launchImageLibrary: jest.fn(),
 }));
