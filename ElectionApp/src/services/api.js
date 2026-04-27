@@ -121,5 +121,10 @@ export const submitApplication = async (electionId, positionId, name, rollNo, ph
 export const castVote = (electionId, positionId, candidateId, latitude, longitude) =>
   request('/api/vote', { method: 'POST', body: JSON.stringify({ electionId, positionId, candidateId, latitude, longitude }) });
 
+export const publishResults = (id) =>
+  request(`/api/admin/election/${id}`, { method: 'PATCH', body: JSON.stringify({ resultsPublished: true }) }, true);
+
+export const fetchPublicResults = (electionId) =>
+  request(`/api/election/results/${electionId}`);
 
 export { API_BASE_URL };

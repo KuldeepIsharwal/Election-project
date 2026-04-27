@@ -16,6 +16,48 @@ import { useAuth } from '../context/AuthContext';
 import { getCurrentLocation, isWithinCampusBoundary } from '../services/location';
 import { fetchCurrentElection, castVote } from '../services/api';
 
+const PublishedResults = ({ electionId }) => {
+  const [results, setResults] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    fetchPublicResults(electionId)
+      .then(setResults)
+      .catch(() => setResults([]))
+      .finally(() => setLoading(false));
+  }, [electionId]);
+
+  if (loading) return <ActivityIndicator color="#2563eb" style={{ marginTop: 32 }} />;
+
+  const grouped = results.reduce((acc, r) => {
+    if (!acc[r.position]) acc[r.position] = [];
+    acc[r.position].push(r);
+    return acc;
+  }, {});
+
+  return (
+    <View>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16 }}>🏆 Election Results</Text>
+      {Object.entries(grouped).map(([position, candidates]) => (
+        <View key={position} style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingBottom: 6 }}>{position}</Text>
+          {candidates.map((c, index) => (
+            <View key={c.id} style={{ backgroundColor: index === 0 ? '#fef9c3' : '#fff', borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', elevation: 2 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: index === 0 ? '#b45309' : '#64748b', marginRight: 10 }}>#{index + 1}</Text>
+              {c.photoUrl ? <Image source={{ uri: c.photoUrl }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 10 }} /> : null}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>{c.name}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>{c.rollNo}</Text>
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#2563eb' }}>{c.voteCount} votes</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+};
+
 const VotingScreen = () => {
   const navigation = useNavigation();
   const { user, backendStudent, setBackendStudent, clearBackendSession } = useAuth();
@@ -134,18 +176,24 @@ const VotingScreen = () => {
       </ScrollView>
     );
   }
-
-  if (isEnded) {
-    return (
-      <ScrollView contentContainerStyle={styles.container}>
-        {renderHeader()}
+if (isEnded) {
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      {renderHeader()}
+      <View style={styles.electionHeader}>
+        <Text style={styles.electionTitle}>{election.title}</Text>
+      </View>
+      {election.resultsPublished ? (
+        <PublishedResults electionId={election.id} />
+      ) : (
         <View style={styles.messageBox}>
           <Text style={styles.messageTitle}>Election Ended</Text>
-          <Text style={styles.messageText}>The election has ended. Thank you for participating!</Text>
+          <Text style={styles.messageText}>Results will be announced soon. Check back later!</Text>
         </View>
-      </ScrollView>
-    );
-  }
+      )}
+    </ScrollView>
+  );
+}
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

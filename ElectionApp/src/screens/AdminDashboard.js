@@ -22,11 +22,13 @@ import {
   fetchAdminApplications,
   fetchAdminElections,
   fetchAdminResults,
+  publishResults,
   reviewApplication,
   updateElection,
 } from '../services/api';
 
 const TABS = ['Elections', 'Positions', 'Applications', 'Results'];
+
 
 const formatDateTime = value => {
   if (!value) {
@@ -508,10 +510,39 @@ const AdminDashboard = () => {
             />
 
             <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => resultElectionId && loadResults(resultElectionId)}>
-              <Text style={styles.primaryButtonText}>Refresh</Text>
-            </TouchableOpacity>
+  style={styles.primaryButton}
+  onPress={() => resultElectionId && loadResults(resultElectionId)}>
+  <Text style={styles.primaryButtonText}>Refresh</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={[styles.primaryButton, { backgroundColor: '#16a34a' }]}
+  onPress={async () => {
+    if (!resultElectionId) {
+      Alert.alert('Select an election first');
+      return;
+    }
+    Alert.alert(
+      'Publish Results',
+      'This will make results visible to all students. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Publish',
+          onPress: async () => {
+            try {
+              await publishResults(resultElectionId);
+              Alert.alert('Published!', 'Students can now see the results.');
+            } catch (e) {
+              Alert.alert('Error', e.message);
+            }
+          },
+        },
+      ]
+    );
+  }}>
+  <Text style={styles.primaryButtonText}>📢 Publish Results</Text>
+</TouchableOpacity>
 
             {Object.entries(groupedResults).map(([positionName, items]) => (
               <View key={positionName} style={styles.section}>

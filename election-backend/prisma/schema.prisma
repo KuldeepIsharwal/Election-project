@@ -19,17 +19,17 @@ model Student {
 }
 
 model Election {
-  id           Int            @id @default(autoincrement())
-  title        String
-  startDate    DateTime
-  endDate      DateTime
-  status       ElectionStatus @default(DRAFT)
-  createdAt    DateTime       @default(now())
-  positions    Position[]
-  votes        Vote[]
-  applications CandidateApplication[]
+  id               Int            @id @default(autoincrement())
+  title            String
+  startDate        DateTime
+  endDate          DateTime
+  status           ElectionStatus @default(DRAFT)
+  resultsPublished Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  positions        Position[]
+  votes            Vote[]
+  applications     CandidateApplication[]
 }
-
 enum ElectionStatus {
   DRAFT
   ACTIVE
