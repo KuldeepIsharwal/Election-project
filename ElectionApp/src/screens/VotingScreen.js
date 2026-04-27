@@ -14,8 +14,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { getCurrentLocation, isWithinCampusBoundary } from '../services/location';
-import { fetchCurrentElection, castVote } from '../services/api';
-
+import { fetchCurrentElection, castVote, fetchPublicResults } from '../services/api';
 const PublishedResults = ({ electionId }) => {
   const [results, setResults] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
